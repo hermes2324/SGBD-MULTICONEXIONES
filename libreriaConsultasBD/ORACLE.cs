@@ -80,6 +80,61 @@ namespace libreriaConsultasBD
             return dataTable;
         }
 
+        //public async Task CargarBasesDeDatosYTablas(TreeView treeView)
+        //{
+        //    try
+        //    {
+        //        if (!AbrirConexion())
+        //        {
+        //            throw new InvalidOperationException("No se pudo abrir la conexión a la base de datos.");
+        //        }
+
+        //        TreeNode rootNode = new TreeNode("BASES DE DATOS ORACLE");
+        //        treeView.Nodes.Add(rootNode);
+
+        //        string query = "SELECT USERNAME FROM ALL_USERS";
+        //        DataTable dataTable = EjecutarConsulta(query);
+
+        //        foreach (DataRow row in dataTable.Rows)
+        //        {
+        //            string dbName = row["USERNAME"].ToString();
+        //            TreeNode dbNode = new TreeNode(dbName);
+        //            rootNode.Nodes.Add(dbNode);
+
+        //            string queryTables = $"SELECT TABLE_NAME FROM ALL_TABLES WHERE OWNER = '{dbName}'";
+        //            DataTable tables = EjecutarConsulta(queryTables);
+
+        //            foreach (DataRow tableRow in tables.Rows)
+        //            {
+        //                string tableName = tableRow["TABLE_NAME"].ToString();
+        //                TreeNode tableNode = new TreeNode(tableName);
+        //                dbNode.Nodes.Add(tableNode);
+
+        //                string queryColumns = $"SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE FROM ALL_TAB_COLUMNS WHERE OWNER = '{dbName}' AND TABLE_NAME = '{tableName}'";
+        //                DataTable columns = EjecutarConsulta(queryColumns);
+
+        //                foreach (DataRow columnRow in columns.Rows)
+        //                {
+        //                    string columnName = columnRow["COLUMN_NAME"].ToString();
+        //                    string dataType = columnRow["DATA_TYPE"].ToString();
+        //                    string length = columnRow["DATA_LENGTH"].ToString();
+        //                    string isNullable = columnRow["NULLABLE"].ToString();
+
+        //                    string columnDetails = $"{columnName} ({dataType}, {length}, Null: {isNullable})";
+        //                    tableNode.Nodes.Add(new TreeNode(columnDetails));
+        //                }
+        //            }
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        Console.WriteLine($"Error al cargar bases de datos y tablas Oracle: {ex.Message}");
+        //    }
+        //    finally
+        //    {
+        //        Cerrar();
+        //    }
+        //}
         public async Task CargarBasesDeDatosYTablas(TreeView treeView)
         {
             try
@@ -89,28 +144,40 @@ namespace libreriaConsultasBD
                     throw new InvalidOperationException("No se pudo abrir la conexión a la base de datos.");
                 }
 
-                TreeNode rootNode = new TreeNode("BASES DE DATOS ORACLE");
+                TreeNode rootNode = new TreeNode("BASES DE DATOS ORACLE");  // Cambié BASES DE DATOS a SCHEMAS para mayor precisión
                 treeView.Nodes.Add(rootNode);
 
-                string query = "SELECT USERNAME FROM ALL_USERS";
+                // Obtener solo usuarios que tienen tablas
+                string query = @"
+            SELECT DISTINCT OWNER 
+            FROM ALL_TABLES 
+            ORDER BY OWNER";
+
                 DataTable dataTable = EjecutarConsulta(query);
 
                 foreach (DataRow row in dataTable.Rows)
                 {
-                    string dbName = row["USERNAME"].ToString();
-                    TreeNode dbNode = new TreeNode(dbName);
-                    rootNode.Nodes.Add(dbNode);
+                    string schemaName = row["OWNER"].ToString();
+                    TreeNode schemaNode = new TreeNode(schemaName);
+                    rootNode.Nodes.Add(schemaNode);
 
-                    string queryTables = $"SELECT TABLE_NAME FROM ALL_TABLES WHERE OWNER = '{dbName}'";
+                    // Obtener las tablas del esquema
+                    string queryTables = $"SELECT TABLE_NAME FROM ALL_TABLES WHERE OWNER = '{schemaName}'";
                     DataTable tables = EjecutarConsulta(queryTables);
 
                     foreach (DataRow tableRow in tables.Rows)
                     {
                         string tableName = tableRow["TABLE_NAME"].ToString();
                         TreeNode tableNode = new TreeNode(tableName);
-                        dbNode.Nodes.Add(tableNode);
+                        schemaNode.Nodes.Add(tableNode);
 
-                        string queryColumns = $"SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE FROM ALL_TAB_COLUMNS WHERE OWNER = '{dbName}' AND TABLE_NAME = '{tableName}'";
+                        // Obtener columnas de la tabla
+                        string queryColumns = $@"
+                    SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE 
+                    FROM ALL_TAB_COLUMNS 
+                    WHERE OWNER = '{schemaName}' 
+                    AND TABLE_NAME = '{tableName}'";
+
                         DataTable columns = EjecutarConsulta(queryColumns);
 
                         foreach (DataRow columnRow in columns.Rows)
@@ -128,13 +195,14 @@ namespace libreriaConsultasBD
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error al cargar bases de datos y tablas Oracle: {ex.Message}");
+                Console.WriteLine($"Error al cargar esquemas y tablas en Oracle: {ex.Message}");
             }
             finally
             {
                 Cerrar();
             }
         }
+
 
 
         public async Task<DataTable> EjecutarConsultaEnBaseSeleccionadaOracle(string baseDeDatos, string query)
@@ -146,9 +214,12 @@ namespace libreriaConsultasBD
                 // Abrir la conexión a la base de datos Oracle
                 AbrirConexion();
 
-                // Cambiar el esquema a la base de datos seleccionada (si es necesario)
-                string switchDatabaseQuery = $"ALTER SESSION SET CURRENT_SCHEMA = {baseDeDatos}";
-                await Task.Run(() => EjecutarConsulta(switchDatabaseQuery));  // Ejecutar cambio de base de datos (si aplica)
+                //// Cambiar el esquema a la base de datos seleccionada (si es necesario)
+                //string switchDatabaseQuery = $"ALTER SESSION SET CURRENT_SCHEMA = \"{baseDeDatos}\"";
+                //using (OracleCommand switchCommand = new OracleCommand(switchDatabaseQuery, conexion3))
+                //{
+                //    await Task.Run(() => switchCommand.ExecuteNonQuery());  // Ejecutar cambio de esquema
+                //}
 
                 // Validar si la consulta es un SELECT (consulta de datos)
                 if (query.TrimStart().ToUpper().StartsWith("SELECT"))
@@ -157,37 +228,37 @@ namespace libreriaConsultasBD
                     using (OracleCommand command = new OracleCommand(query, conexion3))
                     using (OracleDataAdapter adapter = new OracleDataAdapter(command))
                     {
-                        await Task.Run(() => adapter.Fill(dataTable));  // Ejecutar consulta y llenar el DataTable
+                        adapter.Fill(dataTable);  // Ejecutar consulta y llenar el DataTable
                     }
                 }
                 else if (query.TrimStart().ToUpper().StartsWith("INSERT") ||
                          query.TrimStart().ToUpper().StartsWith("UPDATE") ||
-                         query.TrimStart().ToUpper().StartsWith("DELETE"))
+                         query.TrimStart().ToUpper().StartsWith("DELETE") ||
+                         query.TrimStart().ToUpper().StartsWith("CREATE"))
                 {
-                    // Ejecutar las consultas de modificación (INSERT, UPDATE, DELETE) sin llenar un DataTable
                     using (OracleCommand command = new OracleCommand(query, conexion3))
                     {
                         await Task.Run(() => command.ExecuteNonQuery());  // Ejecutar la consulta sin esperar resultados
+                        using (OracleCommand commitCommand = new OracleCommand("COMMIT", conexion3))
+                        {
+                            await Task.Run(() => commitCommand.ExecuteNonQuery());  // Confirmar cambios
+                        }
                     }
                 }
                 else
                 {
-                    // Si la consulta no es un SELECT, INSERT, UPDATE o DELETE, lanzar una excepción
                     throw new InvalidOperationException("La consulta SQL no es de tipo SELECT, INSERT, UPDATE o DELETE.");
                 }
             }
             catch (OracleException ex)
             {
-                // Manejar errores específicos de Oracle
                 MessageBox.Show($"Error al ejecutar consulta Oracle: {ex.Message}", "Error Oracle", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             catch (Exception ex)
             {
-                // Manejar errores generales
                 MessageBox.Show($"Error inesperado: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
 
-            // Retornar el DataTable con los resultados si fue una consulta SELECT
             return dataTable;
         }
 
